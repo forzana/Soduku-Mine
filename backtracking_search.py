@@ -13,6 +13,12 @@ class ConstraintSatisfactionProblem:
     
     def __init__(self, matrix: List[List[int]]):
         self.matrix = matrix
+        self.constraints = {
+            "row": {},
+            "column": {},
+            "block": {},
+            "eight": {}
+        }
         self.neighbors = self.get_neighbors(matrix) # Find all the variables that need to be assigned and their neighbors
         self.variables = self.neighbors.keys() # The variables that need to be assigned
         self.remaining_domain_stack = [{key:{0,1} for key in self.neighbors}] # Domain vals for each variable
@@ -27,10 +33,23 @@ class ConstraintSatisfactionProblem:
                     neighbors[(i,j)] = []
         
         for key in neighbors:
-            neighbors[key].extend(self.get_row_constraints(matrix, i, j))
-            neighbors[key].extend(self.get_col_constraints(matrix, i, j))
-            neighbors[key].extend(self.get_block_constraints(matrix, i, j))
-            neighbors[key].extend(self.get_eight_neighbor_constraints(matrix, i, j))
+            row_constraints = self.get_row_constraints(matrix, i, j)
+            self.constraints["row"][key] = row_constraints
+            neighbors[key].extend(row_constraints)
+
+            col_constraints = self.get_col_constraints(matrix, i, j)
+            self.constraints["column"][key] = col_constraints
+            neighbors[key].extend(col_constraints)
+
+            block_constraints = self.get_block_constraints(matrix, i, j)
+            self.constraints["block"][key] = block_constraints
+            neighbors[key].extend(block_constraints)
+
+            eight_neighbor_constraints = self.get_eight_neighbor_constraints(matrix, i, j)
+            self.constraints["eight"][key] = eight_neighbor_constraints
+            neighbors[key].extend(eight_neighbor_constraints)
+            
+            neighbors[key] = list(set(neighbors[key]))
 
         return neighbors
 
@@ -55,13 +74,26 @@ class ConstraintSatisfactionProblem:
         return constraints
 
         
-        
-        
-        
+    def get_eight_neighbor_constraints(self, matrix: List[List[int]], i: int, j: int) -> List[Tuple[int]]:
 
-        
-                
+        constraints = []
 
+        # All relative moves: 8 directions (king moves in chess)
+        directions = [
+            (-1, -1), (-1, 0), (-1, 1),  # up-left, up, up-right
+            (0, -1),           (0, 1),   # left,       right
+            (1, -1),  (1, 0),  (1, 1)    # down-left, down, down-right
+        ]
+
+        for di, dj in directions:
+            ni, nj = i + di, j + dj
+            # Check bounds
+            if 0 <= ni < 9 and 0 <= nj < 9 and matrix[ni][nj] > 0:
+                for ki, kj in directions:
+                    x, y = ni + ki, nj + kj
+                    if 0 <= x < 9 and 0 <= y < 9 and matrix[x][y] == 0 and x != i and y != j:
+                        constraints.append((x,y))
+        return constraints
         
     # If all variables are assigned, then the assignment is complete
     def is_complete(self, assignment):
@@ -89,25 +121,85 @@ class ConstraintSatisfactionProblem:
                 var_with_max = var
         return var_with_max
 
-
+    # Use the order {0, 1} to find remaining domain values
     def order_domain_values(self, var):
         return [val for val in {0, 1} if val in self.remaining_domain_stack[var]]
 
-    def is_consistent(var, value, assignment):
+    def satisfies_row_constraint(self, var, assignment):
+        unassigned_count = 0
+        assigned_count = 0
+
+        for r, c in self.constraints["row"][var]:
+            if (r, c) in assignment:
+                assigned_count += 1
+            else:
+                unassigned_count += 1
+        
+        if assigned_count > 3 or assigned_count + unassigned_count < 3:
+            return False
+        
+        return True
+
+    def satisfies_column_constraint(self, var, assignment):
+        unassigned_count = 0
+        assigned_count = 0
+
+        for r, c in self.constraints["column"][var]:
+            if (r, c) in assignment:
+                assigned_count += 1
+            else:
+                unassigned_count += 1
+        
+        if assigned_count > 3 or assigned_count + unassigned_count < 3:
+            return False
+        
+        return True
+
+    def satisfies_block_constraint(self, var, assignment):
+        unassigned_count = 0
+        assigned_count = 0
+
+        for r, c in self.constraints["block"][var]:
+            if (r, c) in assignment:
+                assigned_count += 1
+            else:
+                unassigned_count += 1
+        
+        if assigned_count > 3 or assigned_count + unassigned_count < 3:
+            return False
+        
+        return True
+
+    def satisfies_eight_neighbor_constraints(self, var, assignment):
+
+
+    def satisfies_constraints(self, var, assignment):
+        return self.satisfies_row_constraint(var, assignment) and self.satisfies_column_constraint(var, assignment) and self.satisfies_block_constraint(var, assignment) and self.satisfies_eight_neighbor_constraints(var, assignment)
+
+    # Check if the partial assignment is consistent with all contraints
+    def is_consistent(self, var, value, assignment):
+        assignment[var] = value
+        if self.satisfies_constraints(var, assignment):
+            del assignment[var]
+            return True
+        else:
+            del assignment[var]
+            return False
+
     
     def forward_check(self, var, assignment):
 
 
     def backtrack(self, assignment):
-        if self.is_complete(self, assignment):
+        if self.is_complete(assignment):
             return assignment
-        var = self.select_unassigned_var(self, assignment)
-        for value in self.order_domain_values(self, var):
+        var = self.select_unassigned_var(assignment)
+        for value in self.order_domain_values(var):
             # TO-DO
             if self.is_consistent(var, value, assignment):
                 assignment[var] = value
-                if self.forward_check(self, var, assignment):
-                    result = self.backtrack(self, assignment)
+                if self.forward_check(var, assignment):
+                    result = self.backtrack(assignment)
                     if result:
                         return result
                 del assignment[var]
